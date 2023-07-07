@@ -1,0 +1,66 @@
+package db
+
+import (
+	. "github.com/nio-net/common"
+	"sync"
+)
+
+type DB interface {
+	Get([]byte) []byte
+	Set([]byte, []byte)
+	SetSync([]byte, []byte)
+	Delete([]byte)
+	DeleteSync([]byte)
+	Close()
+	NewBatch() Batch
+
+	Print()
+	Iterator() Iterator
+	Stats() map[string]string
+}
+
+type Batch interface {
+	Set(key, value []byte)
+	Delete(key []byte)
+	Write()
+}
+
+type Iterator interface {
+	Next() bool
+
+	Key() []byte
+	Value() []byte
+}
+
+
+
+const (
+	LevelDBBackendStr   = "leveldb" 
+	CLevelDBBackendStr  = "cleveldb"
+	GoLevelDBBackendStr = "goleveldb"
+	MemDBBackendStr     = "memdb"
+)
+
+type dbCreator func(name string, dir string) (DB, error)
+
+var backends = map[string]dbCreator{}
+
+var db_mtx sync.Mutex
+
+func registerDBCreator(backend string, creator dbCreator, force bool) {
+	_, ok := backends[backend]
+	if !force && ok {
+		return
+	}
+	backends[backend] = creator
+}
+
+func NewDB(name string, backend string, dir string) DB {
+	db_mtx.Lock()
+	defer db_mtx.Unlock()
+	db, err := backends[backend](name, dir)
+	if err != nil {
+		PanicSanity(Fmt("Error initializing DB: %v", err))
+	}
+	return db
+}
